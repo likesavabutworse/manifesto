@@ -286,3 +286,39 @@ steps:
     if: always()
     with: { sarif_file: manifesto.sarif }
 ```
+### GitHub Action
+
+The repository is also a composite action. It installs the release binary
+(checked against `checksums.txt`), scans, prints the report in the job log, and
+uploads the SARIF file to code scanning, even when the scan fails. The step fails
+afterwards if there were findings.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write   # for the SARIF upload
+
+steps:
+  - uses: actions/checkout@v4
+  - name: Fetch custom policies
+    run: cp -r ../platform-policies/policies .manifesto/policies
+  - uses: likesavabutworse/manifesto@main
+    with:
+      path: ./chart
+      values: values/prod.yaml
+```
+
+| Input | Default | |
+|---|---|---|
+| `path` | `.` | chart directory, manifest file or directory |
+| `values` | | values file for a chart (`-f`) |
+| `args` | | extra `manifesto scan` arguments, e.g. `--pss baseline --set image.tag=1.2.3` |
+| `fail-on` | `low` | `high`, `medium`, `low` or `never` |
+| `version` | `latest` | a release such as `v0.0.7`; pin one in CI |
+| `upload-sarif` | `true` | needs `security-events: write`, and code scanning enabled on a private repository |
+| `annotations` | `false` | also print annotations on the PR diff |
+
+The `exit-code` output is manifesto's exit code (`0` clean, `1` findings, `2`
+error). A pull request from a fork gets no `security-events: write`, so set
+`upload-sarif: "false"` for those, or rely on `annotations: "true"`.
+The action uses the `gh` CLI, which every GitHub-hosted runner has.

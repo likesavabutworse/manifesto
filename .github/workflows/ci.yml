@@ -40,3 +40,13 @@ jobs:
         with:
           version: "~> v2"
           args: check
+
+  # Runs the action from this checkout against the latest published binary.
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          path: testdata/charts/good
+          upload-sarif: "false"

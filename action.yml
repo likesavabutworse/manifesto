@@ -1,0 +1,111 @@
+name: manifesto
+description: Scan a Helm chart or Kubernetes manifests with manifesto, and upload the findings to code scanning.
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Chart directory, manifest file or directory, or "-" for stdin.
+    default: "."
+  values:
+    description: Values file for rendering a chart (-f). One path.
+    default: ""
+  args:
+    description: Extra arguments for `manifesto scan`, for example "--pss baseline --set image.tag=1.2.3".
+    default: ""
+  fail-on:
+    description: "Fail the step on findings at or above this severity: high, medium, low, never."
+    default: low
+  version:
+    description: 'manifesto release to install, for example "v0.0.7". Default: the latest.'
+    default: latest
+  upload-sarif:
+    description: "Upload a SARIF report to GitHub code scanning. Needs `security-events: write`, and code scanning enabled for private repositories."
+    default: "true"
+  annotations:
+    description: Also print GitHub Actions annotations, which show up on the pull request diff.
+    default: "false"
+
+outputs:
+  exit-code:
+    description: "manifesto's exit code: 0 clean, 1 findings, 2 error."
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install manifesto
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64)    asset=manifesto_linux_amd64 ;;
+          Linux-ARM64)  asset=manifesto_linux_arm64 ;;
+          macOS-X64)    asset=manifesto_darwin_amd64 ;;
+          macOS-ARM64)  asset=manifesto_darwin_arm64 ;;
+          Windows-X64)  asset=manifesto_windows_amd64.exe ;;
+          *) echo "::error::manifesto has no build for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
+        esac
+        dir="$RUNNER_TEMP/manifesto-bin"
+        mkdir -p "$dir"
+        tag=""
+        if [ "$VERSION" != "latest" ]; then tag="$VERSION"; fi
+        # gh is on every GitHub-hosted runner and, unlike curl, also works while
+        # the repository is private.
+        gh release download $tag --repo likesavabutworse/manifesto \
+          --pattern "$asset" --pattern checksums.txt --dir "$dir" --clobber
+        cd "$dir"
+        if command -v sha256sum >/dev/null; then sum="sha256sum -c"; else sum="shasum -a 256 -c"; fi
+        grep " $asset\$" checksums.txt | $sum -
+        bin=manifesto
+        case "$asset" in *.exe) bin=manifesto.exe ;; esac
+        mv "$asset" "$bin"
+        chmod +x "$bin"
+        echo "$dir" >> "$GITHUB_PATH"
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        VALUES: ${{ inputs.values }}
+        EXTRA_ARGS: ${{ inputs.args }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        SARIF: ${{ inputs.upload-sarif }}
+        ANNOTATIONS: ${{ inputs.annotations }}
+      run: |
+        out="$RUNNER_TEMP/manifesto"
+        mkdir -p "$out"
+        flags=(--fail-on "$FAIL_ON" -o text)
+        if [ -n "$VALUES" ]; then flags+=(-f "$VALUES"); fi
+        if [ "$SARIF" = "true" ]; then flags+=(-o "sarif=$out/manifesto.sarif"); fi
+        if [ "$ANNOTATIONS" = "true" ]; then flags+=(-o "github=$out/annotations.txt"); fi
+        # The exit code is passed on at the end, so the report is uploaded
+        # even when the scan finds something.
+        set +e
+        # EXTRA_ARGS is split on whitespace on purpose.
+        manifesto scan "$SCAN_PATH" "${flags[@]}" $EXTRA_ARGS
+        code=$?
+        set -e
+        # Workflow commands are read from stdout, so print the annotations.
+        if [ -f "$out/annotations.txt" ]; then cat "$out/annotations.txt"; fi
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if [ -f "$out/manifesto.sarif" ]; then
+          echo "sarif=$out/manifesto.sarif" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload SARIF
+      # A scan that failed outright (exit 2) writes no report.
+      if: always() && steps.scan.outputs.sarif != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif }}
+        category: manifesto
+
+    - name: Fail on findings
+      if: always() && steps.scan.outputs.exit-code != '0' && steps.scan.outputs.exit-code != ''
+      shell: bash
+      run: exit ${{ steps.scan.outputs.exit-code }}

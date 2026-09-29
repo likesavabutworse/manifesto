@@ -3,6 +3,8 @@ name: build and release
 on:
   push:
     branches: [main]
+    # A docs-only push is not worth a release.
+    paths-ignore: ["**.md"]
 
 permissions:
   contents: write
