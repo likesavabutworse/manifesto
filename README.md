@@ -8,6 +8,17 @@ Off the shelf tools already cover much of what manifesto does, but each comes wi
 
 `manifesto` puts these in one entry point: fast runs, custom policies in Rego or CEL with unit tests for both, a check of the raw templates as well as the rendered output, and SARIF and GitHub Actions annotations built in.
 
+## Install
+
+```sh
+# linux on amd64; use manifesto_linux_arm64, manifesto_darwin_arm64 or manifesto_darwin_amd64 elsewhere
+curl -fsSL -o /usr/local/bin/manifesto https://github.com/likesavabutworse/manifesto/releases/latest/download/manifesto_linux_amd64
+sudo chmod +x /usr/local/bin/manifesto
+manifesto version
+```
+
+manifesto does not need `helm` installed: it renders charts in-process.
+
 ## Quick start
 
 ```sh
