@@ -1,0 +1,48 @@
+name: build and release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make all
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # GoReleaser needs the full history and tags to find the previous
+          # release for the changelog.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Every push to main is a release, so the tag is derived from the run
+      # number instead of cut by hand. GoReleaser reads the version from the
+      # tag on HEAD, so it must exist before GoReleaser runs.
+      - name: Tag commit
+        run: |
+          tag="v0.0.${{ github.run_number }}"
+          git tag "$tag"
+          git push origin "$tag"
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
