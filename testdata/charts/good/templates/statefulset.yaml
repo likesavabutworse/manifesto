@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-db
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceName: db
+  selector:
+    matchLabels: {app: db}
+  template:
+    metadata:
+      labels: {app: db}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-db
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: init
+          image: "{{ .Values.image.repository }}@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          securityContext:
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            limits: {cpu: 100m, memory: 64Mi}
+      containers:
+        - name: db
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {memory: 256Mi}
+          livenessProbe: {tcpSocket: {port: 5432}}
+          readinessProbe: {tcpSocket: {port: 5432}}

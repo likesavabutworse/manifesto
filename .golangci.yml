@@ -1,0 +1,30 @@
+version: "2"
+
+linters:
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        # These pull the cluster client, release storage, registry and
+        # provenance code into the binary (~47MB, +15ms startup). Render with
+        # pkg/engine instead; see progress.md.
+        no-heavy-helm:
+          files: ["$all"]
+          deny:
+            - pkg: helm.sh/helm/v4/pkg/action
+              desc: use pkg/engine; pkg/action links the cluster client and storage drivers
+            - pkg: helm.sh/helm/v4/pkg/getter
+              desc: pulls the wasm plugin runtime; read values files directly
+            - pkg: helm.sh/helm/v4/pkg/cli
+              desc: pulls kube config and getters
+            - pkg: helm.sh/helm/v4/pkg/kube
+              desc: cluster client
+            - pkg: helm.sh/helm/v4/pkg/registry
+              desc: OCI client
+            - pkg: helm.sh/helm/v4/pkg/storage
+              desc: release storage drivers
+            - pkg: sigs.k8s.io/controller-runtime
+              desc: cluster client
+            - pkg: k8s.io/kubectl
+              desc: cluster client

@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  namespace: payments
+  labels:
+    {{- include "bad.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "bad.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bad.labels" . | nindent 8 }}
+    spec:
+      hostNetwork: true
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          securityContext:
+            runAsUser: 0
+        - name: proxy
+          image: envoyproxy/envoy:latest
+          securityContext:
+            privileged: true

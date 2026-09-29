@@ -1,0 +1,41 @@
+# Policy, binding and params in one file. The params object (a ConfigMap here)
+# stands in for the one a cluster would hold, so the allow-list is data and
+# the policy stays generic.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: image-registry
+  annotations:
+    manifesto.io/title: Images come from an approved registry
+spec:
+  paramKind:
+    apiVersion: v1
+    kind: ConfigMap
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        resources: ["deployments", "statefulsets", "daemonsets"]
+  validations:
+    - expression: >-
+        object.spec.template.spec.containers.all(c,
+          params.data.registries.split(',').exists(r, c.image.startsWith(r + '/')))
+      messageExpression: "'images must come from one of: ' + params.data.registries"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: image-registry
+spec:
+  policyName: image-registry
+  validationActions: [Deny]
+  paramRef:
+    name: approved-registries
+    parameterNotFoundAction: Deny
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: approved-registries
+data:
+  registries: "ghcr.io/acme,registry.acme.example"

@@ -1,0 +1,21 @@
+# A plain Kubernetes ValidatingAdmissionPolicy: the same file can be applied to
+# a cluster. With no binding, manifesto applies it to every matching resource.
+# manifesto.io/severity is the only manifesto-specific part.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: min-replicas
+  annotations:
+    manifesto.io/severity: medium
+    manifesto.io/title: Deployments run at least 2 replicas
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        resources: ["deployments"]
+  validations:
+    # A rendered chart is not defaulted, so an unset replicas (which the API
+    # server would default to 1) must be handled explicitly.
+    - expression: "has(object.spec.replicas) && object.spec.replicas >= 2"
+      message: "run at least 2 replicas so a node drain does not cause downtime"

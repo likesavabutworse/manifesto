@@ -1,0 +1,33 @@
+# Unit tests for a ValidatingAdmissionPolicy: sample objects and the outcome
+# each should get. Run with `manifesto test`.
+apiVersion: manifesto.io/v1
+kind: PolicyTest
+metadata:
+  name: min-replicas
+policy: min-replicas
+cases:
+  - name: one replica is flagged
+    expect: fail
+    message: at least 2 replicas
+    object: &deployment
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: web}
+      spec:
+        replicas: 1
+        template: {spec: {containers: [{name: app, image: "ghcr.io/acme/app:1"}]}}
+  - name: replicas unset is flagged (a rendered chart is not defaulted)
+    expect: fail
+    object:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: web}
+      spec:
+        template: {spec: {containers: [{name: app, image: "ghcr.io/acme/app:1"}]}}
+  - name: two replicas pass
+    expect: pass
+    object:
+      <<: *deployment
+      spec:
+        replicas: 2
+        template: {spec: {containers: [{name: app, image: "ghcr.io/acme/app:1"}]}}

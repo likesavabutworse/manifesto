@@ -1,0 +1,19 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: no-hostpath
+  annotations:
+    manifesto.io/severity: high
+    manifesto.io/title: Pods do not mount hostPath volumes
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        resources: ["deployments", "statefulsets", "daemonsets"]
+  variables:
+    - name: volumes
+      expression: "has(object.spec.template.spec.volumes) ? object.spec.template.spec.volumes : []"
+  validations:
+    - expression: "variables.volumes.all(v, !has(v.hostPath))"
+      message: "hostPath volumes give the pod access to the node's filesystem"

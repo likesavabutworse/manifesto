@@ -1,0 +1,25 @@
+# The policy reads its allow-list from params, so the tests use the same
+# ConfigMap the policy directory holds (approved-registries).
+apiVersion: manifesto.io/v1
+kind: PolicyTest
+metadata:
+  name: image-registry
+policy: image-registry
+cases:
+  - name: approved registry passes
+    expect: pass
+    object:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: web}
+      spec:
+        template: {spec: {containers: [{name: app, image: "ghcr.io/acme/app:1"}]}}
+  - name: docker hub image is flagged
+    expect: fail
+    message: images must come from one of
+    object:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: web}
+      spec:
+        template: {spec: {containers: [{name: app, image: "nginx:1.27"}]}}

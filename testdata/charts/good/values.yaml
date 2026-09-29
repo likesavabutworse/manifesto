@@ -1,0 +1,3 @@
+image:
+  repository: ghcr.io/acme/api
+  tag: "1.4.2"
