@@ -122,6 +122,29 @@ func localOnly(dirs []string) []string {
 	return out
 }
 
+// policyVerifyFlags holds --policy-verify-key/-alg before they're resolved
+// into a policy.VerifyOptions
+type policyVerifyFlags struct {
+	keyFile string
+	alg     string
+}
+
+func addPolicyVerifyFlags(cmd *cobra.Command, f *policyVerifyFlags) {
+	cmd.Flags().StringVar(&f.keyFile, "policy-verify-key", "", "public key (PEM) to verify signed oci:// policy bundles; a signed bundle is refused without this")
+	cmd.Flags().StringVar(&f.alg, "policy-verify-alg", "", "signing algorithm for --policy-verify-key (default RS256, opa build's own default)")
+}
+
+func (f *policyVerifyFlags) resolve() (policy.VerifyOptions, error) {
+	if f.keyFile == "" {
+		return policy.VerifyOptions{}, nil
+	}
+	b, err := os.ReadFile(f.keyFile)
+	if err != nil {
+		return policy.VerifyOptions{}, fmt.Errorf("reading --policy-verify-key: %w", err)
+	}
+	return policy.VerifyOptions{PublicKey: string(b), Algorithm: f.alg}, nil
+}
+
 type scanOptions struct {
 	render                     manifest.RenderOptions
 	policies, ignore           []string
@@ -130,6 +153,7 @@ type scanOptions struct {
 	pssLevel, failOn           string
 	outputs                    []string
 	noColor                    bool
+	verify                     policyVerifyFlags
 }
 
 func newScanCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -164,6 +188,7 @@ Exit status: 0 no findings at or above --fail-on, 1 findings, 2 error.`,
 	f.StringSliceVarP(&o.render.APIVersions, "api-versions", "a", nil, "extra API versions for .Capabilities.APIVersions")
 	f.BoolVar(&o.render.IncludeTests, "include-tests", false, "also scan helm test hook pods")
 	addPolicyFlag(cmd, &o.policies)
+	addPolicyVerifyFlags(cmd, &o.verify)
 	f.StringSliceVar(&o.ignore, "ignore", nil, "policy ID to skip everywhere (repeatable or comma-separated)")
 	f.StringVar(&o.ignoreFile, "ignore-file", "", "file of ignore rules (default "+ignore.DefaultPath+" if present)")
 	f.BoolVar(&o.noBuiltins, "no-builtins", false, "only run your own policies (disables built-ins, PSS, and template lint)")
@@ -224,8 +249,12 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 	for i, r := range resources {
 		objects[i] = r.Object
 	}
+	verify, err := o.verify.resolve()
+	if err != nil {
+		return usage("%v", err)
+	}
 	engine, err := policy.Load(ctx, policy.Options{
-		Dirs: policyDirs(o.policies), NoBuiltins: o.noBuiltins, Resources: objects, Print: stderr,
+		Dirs: policyDirs(o.policies), NoBuiltins: o.noBuiltins, Resources: objects, Print: stderr, Verify: verify,
 	})
 	if err != nil {
 		return &exitError{code: 2, err: err}
@@ -318,8 +347,6 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 
 type output struct{ format, path string }
 
-// parseOutputs is strict up front so a typo fails before the render, not
-// after it. Two outputs on stdout would interleave, so only one is allowed.
 func parseOutputs(specs []string) ([]output, error) {
 	var outs []output
 	toStdout := 0
@@ -424,6 +451,7 @@ func newNewCmd(stdout io.Writer) *cobra.Command {
 func newTestCmd(stdout, stderr io.Writer) *cobra.Command {
 	var policies []string
 	var verbose bool
+	var verifyFlags policyVerifyFlags
 	cmd := &cobra.Command{
 		Use:   "test [policy-dir]...",
 		Short: "Run policy unit tests (Rego test_* rules and CEL PolicyTest files)",
@@ -432,7 +460,11 @@ func newTestCmd(stdout, stderr io.Writer) *cobra.Command {
 			if len(dirs) == 0 {
 				return &exitError{code: 2, err: fmt.Errorf("no policies: %s does not exist; create one with `manifesto new <name>` or pass --policy", scaffold.DefaultDir)}
 			}
-			modules, _, err := policy.LoadModules(dirs, false)
+			verify, err := verifyFlags.resolve()
+			if err != nil {
+				return &exitError{code: 2, err: err}
+			}
+			modules, _, err := policy.LoadModules(dirs, false, verify)
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}
@@ -495,6 +527,7 @@ func newTestCmd(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	addPolicyFlag(cmd, &policies)
+	addPolicyVerifyFlags(cmd, &verifyFlags)
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "list passing tests too")
 	return cmd
 }
@@ -502,6 +535,7 @@ func newTestCmd(stdout, stderr io.Writer) *cobra.Command {
 func newPoliciesCmd(stdout io.Writer) *cobra.Command {
 	var policies []string
 	var pssLevel string
+	var verifyFlags policyVerifyFlags
 	cmd := &cobra.Command{
 		Use:   "policies",
 		Short: "List every check a scan runs",
@@ -511,7 +545,11 @@ func newPoliciesCmd(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}
-			engine, err := policy.Load(cmd.Context(), policy.Options{Dirs: policyDirs(policies)})
+			verify, err := verifyFlags.resolve()
+			if err != nil {
+				return &exitError{code: 2, err: err}
+			}
+			engine, err := policy.Load(cmd.Context(), policy.Options{Dirs: policyDirs(policies), Verify: verify})
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}
@@ -545,6 +583,7 @@ func newPoliciesCmd(stdout io.Writer) *cobra.Command {
 		},
 	}
 	addPolicyFlag(cmd, &policies)
+	addPolicyVerifyFlags(cmd, &verifyFlags)
 	cmd.Flags().StringVar(&pssLevel, "pss", string(pss.Restricted), "Pod Security Standards level: restricted, baseline, or off")
 	return cmd
 }

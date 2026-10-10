@@ -79,6 +79,7 @@ type Options struct {
 	NoBuiltins bool
 	Resources  []map[string]any
 	Print      io.Writer
+	Verify     VerifyOptions
 }
 
 type Engine struct {
@@ -90,7 +91,7 @@ type Engine struct {
 
 // LoadModules parses every built-in and user .rego file. Exposed for the
 // test runner, which needs the same module set the scanner sees.
-func LoadModules(dirs []string, noBuiltins bool) (map[string]*ast.Module, map[string]bool, error) {
+func LoadModules(dirs []string, noBuiltins bool, verify VerifyOptions) (map[string]*ast.Module, map[string]bool, error) {
 	modules := map[string]*ast.Module{}
 	builtin := map[string]bool{}
 
@@ -119,7 +120,7 @@ func LoadModules(dirs []string, noBuiltins bool) (map[string]*ast.Module, map[st
 
 	for _, dir := range dirs {
 		if isOCIRef(dir) {
-			b, err := pullBundle(dir)
+			b, err := pullBundle(dir, verify)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -154,9 +155,8 @@ func LoadModules(dirs []string, noBuiltins bool) (map[string]*ast.Module, map[st
 	return modules, builtin, nil
 }
 
-// parse accepts both Rego v1 and the pre-1.0 syntax most Conftest policies
-// in the wild are still written in; OPA compiles mixed-version modules
-// together.
+// parse accepts both Rego v1 and the pre-1.0 syntax
+// OPA compiles mixed-version modules together.
 func parse(name, src string) (*ast.Module, error) {
 	m, err := ast.ParseModuleWithOpts(name, src, ast.ParserOptions{ProcessAnnotation: true, RegoVersion: ast.RegoV1})
 	if err == nil {
@@ -169,7 +169,7 @@ func parse(name, src string) (*ast.Module, error) {
 }
 
 func Load(ctx context.Context, opts Options) (*Engine, error) {
-	modules, builtin, err := LoadModules(opts.Dirs, opts.NoBuiltins)
+	modules, builtin, err := LoadModules(opts.Dirs, opts.NoBuiltins, opts.Verify)
 	if err != nil {
 		return nil, err
 	}

@@ -90,9 +90,21 @@ opa build -b policies/ -o bundle.tar.gz
 oras push ghcr.io/acme/policies:1.4.0 bundle.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
 ```
 
-Policy bundles are pulled with the same OCI client as `helm pull oci://...`: ambient auth via the Docker credential store/helpers/OIDC. 
+Policy bundles are pulled with the same OCI client as `helm pull oci://...`: ambient auth via the Docker credential store/helpers/OIDC. The `oci://...` path is **Rego-only**. `ValidatingAdmissionPolicy`/CEL policies are silently skipped. 
 
-The `oci://...` path is **Rego-only**. `ValidatingAdmissionPolicy`/CEL policies are silently skipped. 
+#### Signature verification
+
+[Sign the bundle](https://www.openpolicyagent.org/docs/management-bundles#signing) at build time and manifesto will verify it at pull time:
+
+```sh
+opa build -b policies/ -o bundle.tar.gz --signing-key signing.pem --signing-alg ES256
+oras push ghcr.io/acme/policies:1.4.0 bundle.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
+
+manifesto scan -p oci://ghcr.io/acme/policies:1.4.0 \
+  --policy-verify-key signing.pub.pem --policy-verify-alg ES256
+```
+
+`--policy-verify-key` takes the PEM public key; `--policy-verify-alg` defaults to `RS256` matching `opa build`'s own default. 
 
 ### Example: policies for your own conventions
 

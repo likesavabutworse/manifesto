@@ -4,7 +4,12 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -156,7 +161,7 @@ deny contains msg if {
 		t.Fatalf("creating registry client: %v", err)
 	}
 
-	b, err := pullOCIBundleWith(client, "oci://"+host+"/policies:v1")
+	b, err := pullOCIBundleWith(client, "oci://"+host+"/policies:v1", VerifyOptions{})
 	if err != nil {
 		t.Fatalf("pullOCIBundleWith: %v", err)
 	}
@@ -186,13 +191,13 @@ deny contains msg if {
 	}
 
 	old := pullBundle
-	pullBundle = func(ref string) (*bundle.Bundle, error) {
-		return pullOCIBundleWith(client, ref)
+	pullBundle = func(ref string, verify VerifyOptions) (*bundle.Bundle, error) {
+		return pullOCIBundleWith(client, ref, verify)
 	}
 	defer func() { pullBundle = old }()
 
 	ref := "oci://" + host + "/policies:v1"
-	modules, builtin, err := LoadModules([]string{ref}, true)
+	modules, builtin, err := LoadModules([]string{ref}, true, VerifyOptions{})
 	if err != nil {
 		t.Fatalf("LoadModules: %v", err)
 	}
@@ -204,5 +209,118 @@ deny contains msg if {
 	}
 	if found == nil {
 		t.Fatalf("oci:// module not merged into LoadModules output: %v", modules)
+	}
+}
+
+// ecdsaKeyPair returns a fresh ES256 key pair as PEM text: private key as an
+// "EC PRIVATE KEY" block (what bundle.SigningConfig.GetPrivateKey expects),
+// public key as a "PUBLIC KEY" (PKIX) block (what bundle verification
+// expects).
+func ecdsaKeyPair(t *testing.T) (privPEM, pubPEM string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating key: %v", err)
+	}
+	privBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshaling private key: %v", err)
+	}
+	pubBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatalf("marshaling public key: %v", err)
+	}
+	priv := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
+	pub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes})
+	return string(priv), string(pub)
+}
+
+// signedBundleTarGz builds a bundle.tar.gz the same way `opa build
+// --signing-key priv.pem --signing-alg alg` would, so the verification
+// tests below exercise the real OPA signing/verification code path without
+// needing the opa CLI.
+func signedBundleTarGz(t *testing.T, files map[string]string, privPEM, alg string) []byte {
+	t.Helper()
+	b := bundle.Bundle{Data: map[string]any{}}
+	for path, content := range files {
+		b.Modules = append(b.Modules, bundle.ModuleFile{URL: path, Path: path, Raw: []byte(content)})
+	}
+	// "default" matches the key ID `opa build --signing-key` uses without
+	// an explicit --signing-key-id.
+	if err := b.GenerateSignature(bundle.NewSigningConfig(privPEM, alg, ""), "default", false); err != nil {
+		t.Fatalf("signing bundle: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := bundle.NewWriter(&buf).Write(b); err != nil {
+		t.Fatalf("writing signed bundle: %v", err)
+	}
+	return buf.Bytes()
+}
+
+const ociExampleRego = `package manifesto.oci_example
+
+deny contains msg if {
+	msg := "from an OCI bundle"
+}
+`
+
+func TestPullOCIBundleVerifiedSignature(t *testing.T) {
+	privPEM, pubPEM := ecdsaKeyPair(t)
+	layer := signedBundleTarGz(t, map[string]string{"policy.rego": ociExampleRego}, privPEM, "ES256")
+
+	srv := fakeOCIRegistry(t, "policies", "v1", layer)
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "http://")
+	client, err := registry.NewClient(registry.ClientOptPlainHTTP())
+	if err != nil {
+		t.Fatalf("creating registry client: %v", err)
+	}
+
+	b, err := pullOCIBundleWith(client, "oci://"+host+"/policies:v1", VerifyOptions{PublicKey: pubPEM, Algorithm: "ES256"})
+	if err != nil {
+		t.Fatalf("pullOCIBundleWith with correct key: %v", err)
+	}
+	if len(b.Modules) != 1 {
+		t.Fatalf("got %d modules, want 1", len(b.Modules))
+	}
+}
+
+func TestPullOCIBundleWrongVerifyKeyIsRejected(t *testing.T) {
+	privPEM, _ := ecdsaKeyPair(t)
+	_, otherPubPEM := ecdsaKeyPair(t) // a different key pair's public half
+	layer := signedBundleTarGz(t, map[string]string{"policy.rego": ociExampleRego}, privPEM, "ES256")
+
+	srv := fakeOCIRegistry(t, "policies", "v1", layer)
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "http://")
+	client, err := registry.NewClient(registry.ClientOptPlainHTTP())
+	if err != nil {
+		t.Fatalf("creating registry client: %v", err)
+	}
+
+	_, err = pullOCIBundleWith(client, "oci://"+host+"/policies:v1", VerifyOptions{PublicKey: otherPubPEM, Algorithm: "ES256"})
+	if err == nil {
+		t.Fatal("expected an error verifying with the wrong public key, got nil")
+	}
+}
+
+// TestPullOCIBundleSignedWithoutVerifyKeyFailsClosed documents OPA's own
+// fail-closed behavior: a signed bundle pulled with no verification key
+// configured is refused outright, rather than silently trusted.
+func TestPullOCIBundleSignedWithoutVerifyKeyFailsClosed(t *testing.T) {
+	privPEM, _ := ecdsaKeyPair(t)
+	layer := signedBundleTarGz(t, map[string]string{"policy.rego": ociExampleRego}, privPEM, "ES256")
+
+	srv := fakeOCIRegistry(t, "policies", "v1", layer)
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "http://")
+	client, err := registry.NewClient(registry.ClientOptPlainHTTP())
+	if err != nil {
+		t.Fatalf("creating registry client: %v", err)
+	}
+
+	_, err = pullOCIBundleWith(client, "oci://"+host+"/policies:v1", VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected a signed bundle with no verify key configured to be refused, got nil")
 	}
 }
