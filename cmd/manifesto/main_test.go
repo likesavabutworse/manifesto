@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -350,5 +351,13 @@ metadata:
 	code, fs := scanJSON(t, dir)
 	if code != 0 || len(fs) != 0 {
 		t.Errorf("exit %d, findings %v", code, fs)
+	}
+}
+
+func TestLocalOnly(t *testing.T) {
+	got := localOnly([]string{"./policies", "oci://registry.example.com/bundle:v1", "/abs/dir"})
+	want := []string{"./policies", "/abs/dir"}
+	if !slices.Equal(got, want) {
+		t.Errorf("localOnly() = %v, want %v", got, want)
 	}
 }

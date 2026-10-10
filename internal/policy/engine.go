@@ -118,6 +118,17 @@ func LoadModules(dirs []string, noBuiltins bool) (map[string]*ast.Module, map[st
 	}
 
 	for _, dir := range dirs {
+		if isOCIRef(dir) {
+			b, err := pullBundle(dir)
+			if err != nil {
+				return nil, nil, err
+			}
+			for _, mf := range b.Modules {
+				modules[dir+":"+mf.Path] = mf.Parsed
+			}
+			continue
+		}
+
 		err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err

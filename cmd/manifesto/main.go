@@ -105,7 +105,21 @@ func policyDirs(given []string) []string {
 }
 
 func addPolicyFlag(cmd *cobra.Command, dirs *[]string) {
-	cmd.Flags().StringSliceVarP(dirs, "policy", "p", nil, "directory of .rego and ValidatingAdmissionPolicy .yaml policies (repeatable; default "+scaffold.DefaultDir+" if present)")
+	cmd.Flags().StringSliceVarP(dirs, "policy", "p", nil, "directory of .rego and ValidatingAdmissionPolicy .yaml policies, or an oci://registry/repo:tag OPA bundle (repeatable; default "+scaffold.DefaultDir+" if present)")
+}
+
+// localOnly drops oci:// bundle refs, leaving only filesystem directories.
+// ValidatingAdmissionPolicy/CEL policies are filesystem-only
+// so celpolicy.Load/LoadTests shouldn't see an oci:// entry.
+func localOnly(dirs []string) []string {
+	var out []string
+	for _, d := range dirs {
+		if strings.HasPrefix(d, "oci://") {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 type scanOptions struct {
@@ -219,7 +233,7 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 	for _, w := range engine.Warnings {
 		fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
-	celEngine, err := celpolicy.Load(policyDirs(o.policies))
+	celEngine, err := celpolicy.Load(localOnly(policyDirs(o.policies)))
 	if err != nil {
 		return &exitError{code: 2, err: err}
 	}
@@ -428,11 +442,11 @@ func newTestCmd(stdout, stderr io.Writer) *cobra.Command {
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}
-			celEngine, err := celpolicy.Load(dirs)
+			celEngine, err := celpolicy.Load(localOnly(dirs))
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}
-			suites, err := celpolicy.LoadTests(dirs)
+			suites, err := celpolicy.LoadTests(localOnly(dirs))
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}
@@ -514,7 +528,7 @@ func newPoliciesCmd(stdout io.Writer) *cobra.Command {
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.ID, p.Severity, kinds, title)
 			}
-			celEngine, err := celpolicy.Load(policyDirs(policies))
+			celEngine, err := celpolicy.Load(localOnly(policyDirs(policies)))
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}

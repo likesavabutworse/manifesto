@@ -69,13 +69,30 @@ deny contains msg if {
 
 ### Sourcing custom policies
 
-`manifesto` has no mechanism for fetching custom policies. It reads `.manifesto/policies/` (or any path with `-p`). Your custom policies need to be copied into the workspace before it scans:
+`manifesto` reads `.manifesto/policies/` by default, and any directory passed with `-p`/`--policy` (repeatable). 
 
 ```sh
 # copy custom policies to .manifesto in the workspace
 cp -r ../my-policies/policies .manifesto/policies    # or git clone, an artifact download, ...
 manifesto scan ./chart -f values/prod.yaml
 ```
+
+Rego policies can also be pulled straight from an OCI registry as an [OPA bundle](https://www.openpolicyagent.org/docs/management-bundles), with `--policy oci://registry/repo:tag`. It's additive with local `-p` dirs — mix and match freely:
+
+```sh
+manifesto scan ./chart -p oci://ghcr.io/acme/policies:1.4.0 -p ./extra-local-policies
+```
+
+Build the bundle with `opa build` and push it with [`oras push`](https://oras.land/):
+
+```sh
+opa build -b policies/ -o bundle.tar.gz
+oras push ghcr.io/acme/policies:1.4.0 bundle.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
+```
+
+Policy bundles are pulled with the same OCI client as `helm pull oci://...`: ambient auth via the Docker credential store/helpers/OIDC. 
+
+The `oci://...` path is **Rego-only**. `ValidatingAdmissionPolicy`/CEL policies are silently skipped. 
 
 ### Example: policies for your own conventions
 
