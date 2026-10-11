@@ -6,9 +6,10 @@ linters:
   settings:
     depguard:
       rules:
-        # These pull the cluster client, release storage, registry and
-        # provenance code into the binary (~47MB, +15ms startup). Render with
-        # pkg/engine instead; see progress.md.
+        # These pull the cluster client, release storage and provenance code
+        # into the binary (~47MB, +15ms startup). Render with pkg/engine
+        # instead. pkg/registry (the OCI client) is allowed: internal/policy
+        # uses it to pull oci:// bundles.
         no-heavy-helm:
           files: ["$all"]
           deny:
@@ -20,8 +21,6 @@ linters:
               desc: pulls kube config and getters
             - pkg: helm.sh/helm/v4/pkg/kube
               desc: cluster client
-            - pkg: helm.sh/helm/v4/pkg/registry
-              desc: OCI client
             - pkg: helm.sh/helm/v4/pkg/storage
               desc: release storage drivers
             - pkg: sigs.k8s.io/controller-runtime

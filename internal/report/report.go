@@ -85,9 +85,9 @@ func Text(w io.Writer, fs []Finding, s Summary, color bool) {
 	for i, f := range fs {
 		if f.File != lastFile {
 			if i > 0 {
-				fmt.Fprintln(w)
+				_, _ = fmt.Fprintln(w)
 			}
-			fmt.Fprintln(w, p.paint(bold, f.File))
+			_, _ = fmt.Fprintln(w, p.paint(bold, f.File))
 			lastFile, lastResource = f.File, ""
 		}
 		indent := "  "
@@ -100,7 +100,7 @@ func Text(w io.Writer, fs []Finding, s Summary, color bool) {
 				if f.Line > 0 {
 					label += p.paint(dim, fmt.Sprintf(" (line %d)", f.Line))
 				}
-				fmt.Fprintf(w, "  %s\n", label)
+				_, _ = fmt.Fprintf(w, "  %s\n", label)
 				lastResource = f.Resource
 			}
 			indent = "    "
@@ -115,12 +115,12 @@ func Text(w io.Writer, fs []Finding, s Summary, color bool) {
 		if f.Path != "" {
 			msg += p.paint(dim, " ("+f.Path+")")
 		}
-		fmt.Fprintf(w, "%s%s  %s  %s\n", indent, p.paint(sevColor[f.Severity], sev), p.paint(dim, id), msg)
+		_, _ = fmt.Fprintf(w, "%s%s  %s  %s\n", indent, p.paint(sevColor[f.Severity], sev), p.paint(dim, id), msg)
 	}
 	if len(fs) > 0 {
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
-	fmt.Fprintln(w, summaryLine(fs, s, p))
+	_, _ = fmt.Fprintln(w, summaryLine(fs, s, p))
 }
 
 func summaryLine(fs []Finding, s Summary, p painter) string {
@@ -186,7 +186,7 @@ func GitHub(w io.Writer, fs []Finding) {
 		if f.Resource != "" {
 			msg = f.Resource + ": " + msg
 		}
-		fmt.Fprintf(w, "::%s %s::%s\n", level[f.Severity], props, escapeData(msg))
+		_, _ = fmt.Fprintf(w, "::%s %s::%s\n", level[f.Severity], props, escapeData(msg))
 	}
 }
 

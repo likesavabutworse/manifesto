@@ -62,7 +62,7 @@ func render(path string, tmpl *template.Template, data any) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return tmpl.Execute(f, data)
 }
 
