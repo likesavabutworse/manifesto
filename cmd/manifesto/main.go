@@ -55,11 +55,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var ee *exitError
 	if errors.As(err, &ee) {
 		if ee.err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", ee.err)
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", ee.err)
 		}
 		return ee.code
 	}
-	fmt.Fprintf(stderr, "error: %v\n", err)
+	_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 	return 2
 }
 
@@ -88,7 +88,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 			Use:   "version",
 			Short: "Print the version",
 			Args:  cobra.NoArgs,
-			Run:   func(*cobra.Command, []string) { fmt.Fprintln(stdout, version) },
+			Run:   func(*cobra.Command, []string) { _, _ = fmt.Fprintln(stdout, version) },
 		},
 	)
 	return root
@@ -242,7 +242,7 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 			}
 			return usage("no Kubernetes resources found in %s (expected a chart with Chart.yaml, or YAML with apiVersion and kind)", where)
 		}
-		fmt.Fprintln(stderr, "warning: chart renders no resources; check its values and conditionals")
+		_, _ = fmt.Fprintln(stderr, "warning: chart renders no resources; check its values and conditionals")
 	}
 
 	objects := make([]map[string]any, len(resources))
@@ -260,7 +260,7 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 		return &exitError{code: 2, err: err}
 	}
 	for _, w := range engine.Warnings {
-		fmt.Fprintf(stderr, "warning: %s\n", w)
+		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
 	celEngine, err := celpolicy.Load(localOnly(policyDirs(o.policies)))
 	if err != nil {
@@ -327,7 +327,7 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 	}
 
 	for _, w := range ignoreList.Unused() {
-		fmt.Fprintf(stderr, "warning: %s\n", w)
+		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
 
 	summary := report.Summary{
@@ -435,10 +435,10 @@ func newNewCmd(stdout io.Writer) *cobra.Command {
 				return &exitError{code: 2, err: err}
 			}
 			pkg := scaffold.PackageName(args[0])
-			fmt.Fprintf(stdout, "created %s\ncreated %s\n\n", policyPath, testPath)
-			fmt.Fprintf(stdout, "Next:\n  1. edit the deny rule in %s\n  2. manifesto test                # run its unit tests\n  3. manifesto scan ./your-chart   # findings show up as %q\n", policyPath, pkg)
+			_, _ = fmt.Fprintf(stdout, "created %s\ncreated %s\n\n", policyPath, testPath)
+			_, _ = fmt.Fprintf(stdout, "Next:\n  1. edit the deny rule in %s\n  2. manifesto test                # run its unit tests\n  3. manifesto scan ./your-chart   # findings show up as %q\n", policyPath, pkg)
 			if dir != scaffold.DefaultDir {
-				fmt.Fprintf(stdout, "\n%s is not the default policy dir; pass --policy %s to test and scan.\n", dir, dir)
+				_, _ = fmt.Fprintf(stdout, "\n%s is not the default policy dir; pass --policy %s to test and scan.\n", dir, dir)
 			}
 			return nil
 		},
@@ -470,7 +470,8 @@ func newTestCmd(stdout, stderr io.Writer) *cobra.Command {
 			}
 			ch, err := tester.NewRunner().
 				SetCompiler(ast.NewCompiler().WithEnablePrintStatements(true)).
-				Run(cmd.Context(), modules)
+				SetModules(modules).
+				RunTests(cmd.Context(), nil)
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}
@@ -487,12 +488,12 @@ func newTestCmd(stdout, stderr io.Writer) *cobra.Command {
 				name := r.Policy + ": " + r.Case
 				if r.Err != nil {
 					fail++
-					fmt.Fprintf(stdout, "FAIL  %s\n      %v\n", name, r.Err)
+					_, _ = fmt.Fprintf(stdout, "FAIL  %s\n      %v\n", name, r.Err)
 					continue
 				}
 				pass++
 				if verbose {
-					fmt.Fprintf(stdout, "PASS  %s\n", name)
+					_, _ = fmt.Fprintf(stdout, "PASS  %s\n", name)
 				}
 			}
 			for r := range ch {
@@ -500,28 +501,28 @@ func newTestCmd(stdout, stderr io.Writer) *cobra.Command {
 				switch {
 				case r.Error != nil:
 					fail++
-					fmt.Fprintf(stdout, "ERROR %s: %v\n", name, r.Error)
+					_, _ = fmt.Fprintf(stdout, "ERROR %s: %v\n", name, r.Error)
 				case r.Fail:
 					fail++
-					fmt.Fprintf(stdout, "FAIL  %s (%s:%d)\n", name, r.Location.File, r.Location.Row)
+					_, _ = fmt.Fprintf(stdout, "FAIL  %s (%s:%d)\n", name, r.Location.File, r.Location.Row)
 				case r.Skip:
-					fmt.Fprintf(stdout, "SKIP  %s\n", name)
+					_, _ = fmt.Fprintf(stdout, "SKIP  %s\n", name)
 				default:
 					pass++
 					if verbose {
-						fmt.Fprintf(stdout, "PASS  %s\n", name)
+						_, _ = fmt.Fprintf(stdout, "PASS  %s\n", name)
 					}
 				}
 				if len(r.Output) > 0 {
-					fmt.Fprintf(stdout, "      %s\n", strings.ReplaceAll(strings.TrimRight(string(r.Output), "\n"), "\n", "\n      "))
+					_, _ = fmt.Fprintf(stdout, "      %s\n", strings.ReplaceAll(strings.TrimRight(string(r.Output), "\n"), "\n", "\n      "))
 				}
 			}
-			fmt.Fprintf(stdout, "%d passed, %d failed\n", pass, fail)
+			_, _ = fmt.Fprintf(stdout, "%d passed, %d failed\n", pass, fail)
 			if fail > 0 {
 				return &exitError{code: 1}
 			}
 			if pass == 0 {
-				fmt.Fprintln(stderr, "no tests found (test rules are named test_*)")
+				_, _ = fmt.Fprintln(stderr, "no tests found (test rules are named test_*)")
 			}
 			return nil
 		},
@@ -554,7 +555,7 @@ func newPoliciesCmd(stdout io.Writer) *cobra.Command {
 				return &exitError{code: 2, err: err}
 			}
 			tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "ID\tSEVERITY\tAPPLIES TO\tTITLE")
+			_, _ = fmt.Fprintln(tw, "ID\tSEVERITY\tAPPLIES TO\tTITLE")
 			for _, p := range engine.Policies {
 				kinds := "*"
 				if len(p.Kinds) > 0 {
@@ -564,20 +565,20 @@ func newPoliciesCmd(stdout io.Writer) *cobra.Command {
 				if !p.Builtin {
 					title += "  (" + p.File + ")"
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.ID, p.Severity, kinds, title)
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.ID, p.Severity, kinds, title)
 			}
 			celEngine, err := celpolicy.Load(localOnly(policyDirs(policies)))
 			if err != nil {
 				return &exitError{code: 2, err: err}
 			}
 			for _, p := range celEngine.Policies {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.ID, p.Severity, strings.Join(p.Resources, ","), p.Title+"  ("+p.File+")")
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.ID, p.Severity, strings.Join(p.Resources, ","), p.Title+"  ("+p.File+")")
 			}
 			for _, c := range pss.New(level).Checks {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", c.ID, c.Severity, "pod specs", pssTitle(c))
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", c.ID, c.Severity, "pod specs", pssTitle(c))
 			}
 			for _, t := range tmpllint.Checks {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", t.ID, t.Severity, "template source", t.Title)
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", t.ID, t.Severity, "template source", t.Title)
 			}
 			return tw.Flush()
 		},

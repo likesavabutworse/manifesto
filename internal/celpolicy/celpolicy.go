@@ -462,7 +462,7 @@ func (p *Policy) resolveParams(b binding, object map[string]any) (sets []map[str
 		// params unset.
 		return []map[string]any{nil}, "", nil
 	}
-	var selector labels.Selector = labels.Everything()
+	selector := labels.Everything()
 	if ref.Selector != nil {
 		if selector, err = metav1.LabelSelectorAsSelector(ref.Selector); err != nil {
 			return nil, "", fmt.Errorf("paramRef.selector: %w", err)
