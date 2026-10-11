@@ -2,29 +2,17 @@ name: build and release
 
 on:
   push:
-    branches: [main]
-    # A docs-only push is not worth a release.
-    paths-ignore: ["**.md"]
+    # A release is cut by hand: tag the commit (e.g. `git tag v1.2.0`) and
+    # push the tag. GoReleaser reads the version from the tag on HEAD.
+    tags: ["v*"]
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  test:
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: make all
-
   release:
-    needs: test
     runs-on: ubuntu-26.04
-    outputs:
-      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -34,17 +22,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-
-      # Every push to main is a release, so the tag is derived from the run
-      # number instead of cut by hand. GoReleaser reads the version from the
-      # tag on HEAD, so it must exist before GoReleaser runs.
-      - name: Tag commit
-        id: tag
-        run: |
-          tag="v0.0.${{ github.run_number }}"
-          git tag "$tag"
-          git push origin "$tag"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - run: make all
 
       - uses: goreleaser/goreleaser-action@v7
         with:
@@ -59,8 +37,6 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
-        with:
-          ref: ${{ needs.release.outputs.tag }}
 
       - uses: docker/setup-buildx-action@v4
 
@@ -75,7 +51,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=match,pattern=v(.*),group=1,value=${{ needs.release.outputs.tag }}
+            type=match,pattern=v(.*),group=1
             type=raw,value=latest
             type=sha
 
@@ -88,7 +64,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ needs.release.outputs.tag }}
+            VERSION=${{ github.ref_name }}
           provenance: true
           sbom: true
           cache-from: type=gha

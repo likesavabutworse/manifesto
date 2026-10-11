@@ -1,8 +1,10 @@
 name: ci
 
-# Pushes to main are built, tested and released by release.yml; this covers
-# pull requests, plus the lint that a release should not wait for.
+# Releases are cut manually by pushing a tag (release.yml); this covers
+# every push to main and pull requests.
 on:
+  push:
+    branches: [main]
   pull_request:
 
 permissions:
