@@ -8,6 +8,8 @@ Off the shelf tools already cover much of what manifesto does, but each comes wi
 
 `manifesto` puts these in one entry point: fast runs, custom policies in Rego or CEL with unit tests for both, a check of the raw templates as well as the rendered output, and SARIF and GitHub Actions annotations built in.
 
+See [DESIGN.md](DESIGN.md) for detailed notes.
+
 ## Install
 
 ```sh
