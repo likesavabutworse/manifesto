@@ -27,6 +27,11 @@ type Entry struct {
 	Reason    string `yaml:"reason"`
 
 	hits int
+
+	// Globs are compiled once at Load, not per Match call: a scan can run
+	// Match once per finding, and these patterns never change in between.
+	// A nil field (an unset glob) always matches.
+	policyRe, resourceRe, namespaceRe, fileRe *regexp.Regexp
 }
 
 type List struct {
@@ -64,6 +69,22 @@ func Load(path string) (*List, error) {
 		case strings.TrimSpace(e.Reason) == "":
 			return nil, fmt.Errorf("%s: ignore[%d] (%s): reason is required, so the next reader knows why", path, i, e.Policy)
 		}
+		for _, f := range []struct {
+			pattern string
+			re      **regexp.Regexp
+		}{
+			{e.Policy, &e.policyRe}, {e.Resource, &e.resourceRe},
+			{e.Namespace, &e.namespaceRe}, {e.File, &e.fileRe},
+		} {
+			if f.pattern == "" {
+				continue
+			}
+			re, err := compileGlob(f.pattern)
+			if err != nil {
+				return nil, fmt.Errorf("%s: ignore[%d]: %q: %w", path, i, f.pattern, err)
+			}
+			*f.re = re
+		}
 	}
 	return &List{Path: path, Entries: doc.Ignore}, nil
 }
@@ -71,10 +92,10 @@ func Load(path string) (*List, error) {
 func (l *List) Match(policy, file, resource, namespace string) bool {
 	matched := false
 	for _, e := range l.Entries {
-		if glob(e.Policy, policy) &&
-			(e.Resource == "" || glob(e.Resource, resource)) &&
-			(e.Namespace == "" || glob(e.Namespace, namespace)) &&
-			(e.File == "" || fileMatches(e.File, file)) {
+		if e.policyRe.MatchString(policy) &&
+			(e.resourceRe == nil || e.resourceRe.MatchString(resource)) &&
+			(e.namespaceRe == nil || e.namespaceRe.MatchString(namespace)) &&
+			(e.fileRe == nil || fileMatches(e.fileRe, file)) {
 			e.hits++
 			matched = true
 		}
@@ -96,22 +117,22 @@ func (l *List) Unused() []string {
 
 // fileMatches lets "templates/x.yaml" match however the chart was named on
 // the command line ("./chart/templates/x.yaml").
-func fileMatches(pattern, file string) bool {
-	if glob(pattern, file) {
+func fileMatches(re *regexp.Regexp, file string) bool {
+	if re.MatchString(file) {
 		return true
 	}
 	for i, c := range file {
-		if c == '/' && glob(pattern, file[i+1:]) {
+		if c == '/' && re.MatchString(file[i+1:]) {
 			return true
 		}
 	}
 	return false
 }
 
-func glob(pattern, s string) bool {
-	re := "^" + strings.ReplaceAll(regexp.QuoteMeta(pattern), `\*`, ".*") + "$"
-	ok, _ := regexp.MatchString(re, s)
-	return ok
+// compileGlob turns a glob (* matches any run of characters, including "/")
+// into a compiled regexp, once, at Load time.
+func compileGlob(pattern string) (*regexp.Regexp, error) {
+	return regexp.Compile("^" + strings.ReplaceAll(regexp.QuoteMeta(pattern), `\*`, ".*") + "$")
 }
 
 func pathError(err error) error {

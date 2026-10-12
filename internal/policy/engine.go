@@ -332,11 +332,15 @@ func (e *Engine) Eval(ctx context.Context, kind string, obj map[string]any) ([]V
 		if err != nil {
 			return nil, fmt.Errorf("policy %s: %w", p.ID, err)
 		}
+		// deny/warn are the only two bindings a query can have (see Load),
+		// and their default severities only depend on p, not on each
+		// result row, so this is built once per policy, not once per row.
+		bindings := [2]struct{ name, defaultSev string }{{"deny", p.Severity}, {"warn", severity.Low}}
 		for _, r := range rs {
-			for binding, defaultSev := range map[string]string{"deny": p.Severity, "warn": severity.Low} {
-				items, _ := r.Bindings[binding].([]any)
+			for _, b := range bindings {
+				items, _ := r.Bindings[b.name].([]any)
 				for _, item := range items {
-					v, err := toViolation(p, defaultSev, item)
+					v, err := toViolation(p, b.defaultSev, item)
 					if err != nil {
 						return nil, err
 					}

@@ -196,7 +196,7 @@ Exit status: 0 no findings at or above --fail-on, 1 findings, 2 error.`,
 	f.BoolVar(&o.noTemplateLint, "no-template-lint", false, "skip checks on the raw template source")
 	f.StringVar(&o.pssLevel, "pss", string(pss.Restricted), "Pod Security Standards level: restricted, baseline, or off")
 	f.StringVar(&o.failOn, "fail-on", severity.Low, "exit 1 on findings at or above: high, medium, low, never")
-	f.StringArrayVarP(&o.outputs, "output", "o", []string{"text"}, "output format[=file]: text, json, github, sarif (repeatable; at most one without a file, which goes to stdout)")
+	f.StringArrayVarP(&o.outputs, "output", "o", []string{"text"}, "output format[=file]: "+strings.Join(outputFormatNames(), ", ")+" (repeatable; at most one without a file, which goes to stdout)")
 	f.BoolVar(&o.noColor, "no-color", false, "disable color (also honors NO_COLOR)")
 	return cmd
 }
@@ -349,15 +349,53 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 
 type output struct{ format, path string }
 
+// outputFormats is the one place that knows which --output formats exist
+// and how to render each: parseOutputs validates against it and write
+// dispatches through it, so the two can't list a different set of formats.
+var outputFormats = []struct {
+	name string
+	fn   func(w io.Writer, findings []report.Finding, summary report.Summary, color bool) error
+}{
+	{"text", func(w io.Writer, findings []report.Finding, summary report.Summary, color bool) error {
+		report.Text(w, findings, summary, color)
+		return nil
+	}},
+	{"json", func(w io.Writer, findings []report.Finding, summary report.Summary, _ bool) error {
+		return report.JSON(w, findings, summary)
+	}},
+	{"github", func(w io.Writer, findings []report.Finding, summary report.Summary, _ bool) error {
+		report.GitHub(w, findings)
+		return nil
+	}},
+	{"sarif", func(w io.Writer, findings []report.Finding, summary report.Summary, _ bool) error {
+		return report.SARIF(w, findings, version)
+	}},
+}
+
+func outputFormatNames() []string {
+	names := make([]string, len(outputFormats))
+	for i, f := range outputFormats {
+		names[i] = f.name
+	}
+	return names
+}
+
+func lookupOutputFormat(name string) (func(io.Writer, []report.Finding, report.Summary, bool) error, bool) {
+	for _, f := range outputFormats {
+		if f.name == name {
+			return f.fn, true
+		}
+	}
+	return nil, false
+}
+
 func parseOutputs(specs []string) ([]output, error) {
 	var outs []output
 	toStdout := 0
 	for _, s := range specs {
 		format, path, _ := strings.Cut(s, "=")
-		switch format {
-		case "text", "json", "github", "sarif":
-		default:
-			return nil, fmt.Errorf("--output %q: want text, json, github, or sarif, optionally as format=file", s)
+		if _, ok := lookupOutputFormat(format); !ok {
+			return nil, fmt.Errorf("--output %q: want one of %s, optionally as format=file", s, strings.Join(outputFormatNames(), ", "))
 		}
 		if path == "" {
 			toStdout++
@@ -380,17 +418,8 @@ func (o output) write(stdout io.Writer, findings []report.Finding, summary repor
 		defer func() { err = errors.Join(err, f.Close()) }()
 		w = f
 	}
-	switch o.format {
-	case "json":
-		return report.JSON(w, findings, summary)
-	case "sarif":
-		return report.SARIF(w, findings, version)
-	case "github":
-		report.GitHub(w, findings)
-	default:
-		report.Text(w, findings, summary, useColor(w, noColor))
-	}
-	return nil
+	fn, _ := lookupOutputFormat(o.format) // already validated by parseOutputs
+	return fn(w, findings, summary, useColor(w, noColor))
 }
 
 func pssTitle(c pss.Check) string {
