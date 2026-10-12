@@ -72,9 +72,11 @@ func (p painter) paint(color, s string) string {
 
 var sevColor = map[string]string{severity.High: red, severity.Medium: yellow, severity.Low: cyan}
 
+// Text writes fs, which the caller must have already passed to Sort: when
+// --output is repeated, runScan sorts once and renders into each format,
+// rather than each renderer re-sorting the same findings.
 func Text(w io.Writer, fs []Finding, s Summary, color bool) {
 	p := painter(color)
-	Sort(fs)
 
 	idWidth := 0
 	for _, f := range fs {
@@ -159,8 +161,8 @@ func plural(n int, one, many string) string {
 	return fmt.Sprintf("%d %s", n, many)
 }
 
+// JSON writes fs; see Text for the pre-sorting contract.
 func JSON(w io.Writer, fs []Finding, s Summary) error {
-	Sort(fs)
 	if fs == nil {
 		fs = []Finding{}
 	}
@@ -173,9 +175,10 @@ func JSON(w io.Writer, fs []Finding, s Summary) error {
 	}{fs, s, s.Elapsed.Milliseconds()})
 }
 
+var githubLevel = map[string]string{severity.High: "error", severity.Medium: "warning", severity.Low: "notice"}
+
+// GitHub writes fs; see Text for the pre-sorting contract.
 func GitHub(w io.Writer, fs []Finding) {
-	Sort(fs)
-	level := map[string]string{severity.High: "error", severity.Medium: "warning", severity.Low: "notice"}
 	for _, f := range fs {
 		props := "file=" + escapeProp(f.File)
 		if f.Line > 0 {
@@ -186,7 +189,7 @@ func GitHub(w io.Writer, fs []Finding) {
 		if f.Resource != "" {
 			msg = f.Resource + ": " + msg
 		}
-		_, _ = fmt.Fprintf(w, "::%s %s::%s\n", level[f.Severity], props, escapeData(msg))
+		_, _ = fmt.Fprintf(w, "::%s %s::%s\n", githubLevel[f.Severity], props, escapeData(msg))
 	}
 }
 

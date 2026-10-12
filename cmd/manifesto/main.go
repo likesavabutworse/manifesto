@@ -335,6 +335,7 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 		Resources: len(resources), Policies: len(engine.Policies) + len(celEngine.Policies) + len(evaluator.Checks),
 		Ignored: ignored, Elapsed: time.Since(start),
 	}
+	report.Sort(findings)
 	for _, out := range outputs {
 		if err := out.write(stdout, findings, summary, o.noColor); err != nil {
 			return &exitError{code: 2, err: err}

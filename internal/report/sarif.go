@@ -13,8 +13,8 @@ const infoURI = "https://github.com/likesavabutworse/manifesto"
 
 var sarifLevel = map[string]string{severity.High: "error", severity.Medium: "warning", severity.Low: "note"}
 
+// SARIF writes fs; see Text for the pre-sorting contract.
 func SARIF(w io.Writer, fs []Finding, version string) error {
-	Sort(fs)
 	run := sarif.NewRunWithInformationURI("manifesto", infoURI)
 	run.Tool.Driver.WithVersion(version)
 
