@@ -21,6 +21,7 @@ import (
 	"github.com/likesavabutworse/manifesto/internal/pss"
 	"github.com/likesavabutworse/manifesto/internal/report"
 	"github.com/likesavabutworse/manifesto/internal/scaffold"
+	"github.com/likesavabutworse/manifesto/internal/severity"
 	"github.com/likesavabutworse/manifesto/internal/tmpllint"
 )
 
@@ -194,7 +195,7 @@ Exit status: 0 no findings at or above --fail-on, 1 findings, 2 error.`,
 	f.BoolVar(&o.noBuiltins, "no-builtins", false, "only run your own policies (disables built-ins, PSS, and template lint)")
 	f.BoolVar(&o.noTemplateLint, "no-template-lint", false, "skip checks on the raw template source")
 	f.StringVar(&o.pssLevel, "pss", string(pss.Restricted), "Pod Security Standards level: restricted, baseline, or off")
-	f.StringVar(&o.failOn, "fail-on", policy.Low, "exit 1 on findings at or above: high, medium, low, never")
+	f.StringVar(&o.failOn, "fail-on", severity.Low, "exit 1 on findings at or above: high, medium, low, never")
 	f.StringArrayVarP(&o.outputs, "output", "o", []string{"text"}, "output format[=file]: text, json, github, sarif (repeatable; at most one without a file, which goes to stdout)")
 	f.BoolVar(&o.noColor, "no-color", false, "disable color (also honors NO_COLOR)")
 	return cmd
@@ -204,7 +205,7 @@ func runScan(ctx context.Context, target string, o *scanOptions, stdout, stderr 
 	usage := func(format string, a ...any) error {
 		return &exitError{code: 2, err: fmt.Errorf(format, a...)}
 	}
-	if o.failOn != "never" && policy.Rank(o.failOn) < 0 {
+	if o.failOn != "never" && severity.Rank(o.failOn) < 0 {
 		return usage("--fail-on %q: want high, medium, low, or never", o.failOn)
 	}
 	outputs, err := parseOutputs(o.outputs)

@@ -31,29 +31,12 @@ import (
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/open-policy-agent/opa/v1/storage/inmem"
 	"github.com/open-policy-agent/opa/v1/topdown"
+
+	"github.com/likesavabutworse/manifesto/internal/severity"
 )
 
 //go:embed builtin/*.rego
 var builtinFS embed.FS
-
-const (
-	High   = "high"
-	Medium = "medium"
-	Low    = "low"
-)
-
-// Rank orders severities; lower is more severe. Unknown severities rank -1.
-func Rank(s string) int {
-	switch s {
-	case High:
-		return 0
-	case Medium:
-		return 1
-	case Low:
-		return 2
-	}
-	return -1
-}
 
 type Policy struct {
 	ID       string
@@ -239,7 +222,7 @@ func Load(ctx context.Context, opts Options) (*Engine, error) {
 			continue
 		}
 		if p.Severity == "" {
-			p.Severity = High
+			p.Severity = severity.High
 		}
 
 		var q []string
@@ -291,7 +274,7 @@ func applyAnnotations(p *Policy, a *ast.Annotations) error {
 	if v, ok := a.Custom["severity"]; ok {
 		s, _ := v.(string)
 		s = strings.ToLower(s)
-		if Rank(s) < 0 {
+		if severity.Rank(s) < 0 {
 			return fmt.Errorf("custom.severity %v: want high, medium, or low", v)
 		}
 		p.Severity = s
@@ -350,7 +333,7 @@ func (e *Engine) Eval(ctx context.Context, kind string, obj map[string]any) ([]V
 			return nil, fmt.Errorf("policy %s: %w", p.ID, err)
 		}
 		for _, r := range rs {
-			for binding, defaultSev := range map[string]string{"deny": p.Severity, "warn": Low} {
+			for binding, defaultSev := range map[string]string{"deny": p.Severity, "warn": severity.Low} {
 				items, _ := r.Bindings[binding].([]any)
 				for _, item := range items {
 					v, err := toViolation(p, defaultSev, item)
@@ -371,8 +354,8 @@ func (e *Engine) Eval(ctx context.Context, kind string, obj map[string]any) ([]V
 	return out, nil
 }
 
-func toViolation(p *Policy, severity string, item any) (Violation, error) {
-	v := Violation{Policy: p, Severity: severity}
+func toViolation(p *Policy, defaultSev string, item any) (Violation, error) {
+	v := Violation{Policy: p, Severity: defaultSev}
 	switch t := item.(type) {
 	case string:
 		v.Message = t
@@ -385,7 +368,7 @@ func toViolation(p *Policy, severity string, item any) (Violation, error) {
 		v.Path, _ = t["path"].(string)
 		if s, ok := t["severity"].(string); ok {
 			s = strings.ToLower(s)
-			if Rank(s) < 0 {
+			if severity.Rank(s) < 0 {
 				return v, fmt.Errorf("policy %s: severity %q: want high, medium, or low", p.ID, s)
 			}
 			v.Severity = s

@@ -47,6 +47,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apiserver/pkg/cel/environment"
+
+	"github.com/likesavabutworse/manifesto/internal/severity"
 )
 
 const (
@@ -121,7 +123,7 @@ func Load(dirs []string) (*Engine, error) {
 				}
 				if s, ok := vap.Annotations[SeverityAnnotation]; ok {
 					pol.Severity = strings.ToLower(s)
-					if pol.Severity != "high" && pol.Severity != "medium" && pol.Severity != "low" {
+					if severity.Rank(pol.Severity) < 0 {
 						return fmt.Errorf("%s: %s: annotation %s is %q: want high, medium, or low", p, vap.Name, SeverityAnnotation, s)
 					}
 				}
@@ -313,11 +315,11 @@ func (p *Policy) compile(env *cel.Env) error {
 	}
 
 	if p.Severity == "" {
-		p.Severity = "medium"
+		p.Severity = severity.Medium
 		if len(p.bindings) > 0 && !slices.ContainsFunc(p.bindings, func(b binding) bool {
 			return slices.Contains(b.spec.ValidationActions, admissionv1.Deny)
 		}) {
-			p.Severity = "low"
+			p.Severity = severity.Low
 		}
 	}
 	return nil

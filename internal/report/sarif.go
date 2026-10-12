@@ -6,12 +6,12 @@ import (
 	"github.com/owenrumney/go-sarif/v3/pkg/report"
 	"github.com/owenrumney/go-sarif/v3/pkg/report/v210/sarif"
 
-	"github.com/likesavabutworse/manifesto/internal/policy"
+	"github.com/likesavabutworse/manifesto/internal/severity"
 )
 
 const infoURI = "https://github.com/likesavabutworse/manifesto"
 
-var sarifLevel = map[string]string{policy.High: "error", policy.Medium: "warning", policy.Low: "note"}
+var sarifLevel = map[string]string{severity.High: "error", severity.Medium: "warning", severity.Low: "note"}
 
 func SARIF(w io.Writer, fs []Finding, version string) error {
 	Sort(fs)

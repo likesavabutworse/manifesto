@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/likesavabutworse/manifesto/internal/policy"
+	"github.com/likesavabutworse/manifesto/internal/severity"
 )
 
 type Finding struct {
@@ -44,8 +44,8 @@ func Sort(fs []Finding) {
 		if a.Resource != b.Resource {
 			return a.Resource < b.Resource
 		}
-		if policy.Rank(a.Severity) != policy.Rank(b.Severity) {
-			return policy.Rank(a.Severity) < policy.Rank(b.Severity)
+		if severity.Rank(a.Severity) != severity.Rank(b.Severity) {
+			return severity.Rank(a.Severity) < severity.Rank(b.Severity)
 		}
 		return a.Policy < b.Policy
 	})
@@ -70,7 +70,7 @@ func (p painter) paint(color, s string) string {
 	return color + s + reset
 }
 
-var sevColor = map[string]string{policy.High: red, policy.Medium: yellow, policy.Low: cyan}
+var sevColor = map[string]string{severity.High: red, severity.Medium: yellow, severity.Low: cyan}
 
 func Text(w io.Writer, fs []Finding, s Summary, color bool) {
 	p := painter(color)
@@ -144,7 +144,7 @@ func summaryLine(fs []Finding, s Summary, p painter) string {
 		return p.paint(green, "✓ no findings") + "  " + meta
 	}
 	var parts []string
-	for _, sev := range []string{policy.High, policy.Medium, policy.Low} {
+	for _, sev := range []string{severity.High, severity.Medium, severity.Low} {
 		if counts[sev] > 0 {
 			parts = append(parts, p.paint(sevColor[sev], fmt.Sprintf("%d %s", counts[sev], sev)))
 		}
@@ -175,7 +175,7 @@ func JSON(w io.Writer, fs []Finding, s Summary) error {
 
 func GitHub(w io.Writer, fs []Finding) {
 	Sort(fs)
-	level := map[string]string{policy.High: "error", policy.Medium: "warning", policy.Low: "notice"}
+	level := map[string]string{severity.High: "error", severity.Medium: "warning", severity.Low: "notice"}
 	for _, f := range fs {
 		props := "file=" + escapeProp(f.File)
 		if f.Line > 0 {
@@ -202,9 +202,9 @@ func ExitCode(fs []Finding, failOn string) int {
 	if failOn == "never" {
 		return 0
 	}
-	threshold := policy.Rank(failOn)
+	threshold := severity.Rank(failOn)
 	for _, f := range fs {
-		if policy.Rank(f.Severity) <= threshold {
+		if severity.Rank(f.Severity) <= threshold {
 			return 1
 		}
 	}

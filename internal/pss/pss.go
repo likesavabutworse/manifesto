@@ -14,6 +14,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/pod-security-admission/api"
 	psapolicy "k8s.io/pod-security-admission/policy"
+
+	"github.com/likesavabutworse/manifesto/internal/severity"
 )
 
 type Level string
@@ -38,8 +40,8 @@ const IDPrefix = "pss."
 // Baseline checks block known privilege escalations; restricted checks are
 // hardening on top. The severities reflect that gap.
 const (
-	baselineSeverity   = "high"
-	restrictedSeverity = "medium"
+	baselineSeverity   = severity.High
+	restrictedSeverity = severity.Medium
 )
 
 type Check struct {
